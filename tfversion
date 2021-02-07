@@ -12,6 +12,28 @@ set +x # Set to -x for debugging
 # - An option is provided to override where to local for the state conf is
 # - Will use same profile from the state conf to download the remote state
 
+__VERBOSE=0
+
+usage() {
+    __VERBOSE=1 # Override to enable log output
+    log "Usage: tfversion [<options>]"
+    log ""
+    log "Options:"
+    log "  -v, --verbose  Enable verbose mode (default 0)"
+    log "  -c, --conf     Backend terraform state (default state.tf)"
+    log ""
+    log "Help Options:"
+    log "-h, --help       Show this help message"
+}
+
+
+# Only send output stdout if verbose is enabled.
+function log() {
+    if [[ $__VERBOSE -eq 1 ]]; then
+        echo "$@"
+    fi
+}
+
 # Extract the value from the given conf file (either HCL or tfvars)
 # for a given filter and extract using specific offset.
 get_value_from_conf_file() {
@@ -31,35 +53,51 @@ get_terraform_version_from_state_file() {
     # We will store the state in a tmp file (and will remove it later)
     tmp_state_file=$(mktemp)
 
-    echo "AWS profile: $3"
-    echo "Remote S3 bucket: $1"
-    echo "State file key: $2"
-    echo "" 
-    echo "Downloading state file from: $state_file"
-    echo "To temporary file: $tmp_state_file"
+    log "AWS profile: $3"
+    log "Remote S3 bucket: $1"
+    log "State file key: $2"
+    log ""
+    log "Downloading state file from: $state_file"
+    log "To temporary file: $tmp_state_file"
 
     aws s3 cp "$state_file" "$tmp_state_file" --profile "$3" > /dev/null
     TF_VERSION=$(jq -r ".terraform_version" "$tmp_state_file")
 
     rm "$tmp_state_file" || true
-    echo "Cleaning up..."
+    log "Cleaning up..."
 }
 
 display_terraform_version() {
-    echo ""
-    echo "This repo last used terraform $TF_VERSION"
+    log ""
+    log "This repo last used terraform;"
+    echo "$TF_VERSION"
 }
 
 #### SCRIPT STARTS HERE ###
 
-echo ""
-echo "tfversion will inspect the remote S3 terraform state to determine what version of terraform was last used."
-echo ""
-echo "It is recommended to use terraform version pinning whenever possible."
-echo "See https://www.terraform.io/docs/language/settings/index.html#specifying-a-required-terraform-version"
-echo ""
+log ""
+log "tfversion will inspect the remote S3 terraform state to determine what version of terraform was last used."
+log ""
+log "It is recommended to use terraform version pinning whenever possible."
+log "See https://www.terraform.io/docs/language/settings/index.html#specifying-a-required-terraform-version"
+log ""
 
-STATE_CONF=${1:-state.tf}
+while [ "$1" != "" ]; do
+    case $1 in
+        -v | --verbose ) shift
+            __VERBOSE=$1
+            ;;
+        -c | --conf ) shift
+            STATE_CONF=$1
+            ;;
+        -h | --help )
+            usage
+            exit
+            ;;
+    esac
+    shift
+done
+
 if [ ! -f "$STATE_CONF" ]; then
     echo "Error: Terraform state config file not found!"
     echo " - check the filename is correct: $STATE_CONF"
